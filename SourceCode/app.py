@@ -24,7 +24,7 @@ from regularization import get_l1_weight, get_l2_weight
 LABELS = ["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"]
 SUPPORTED_MODELS = ["cbam", "resnet18"]
 
-
+# dinh nghia
 def get_device():
     return torch.device("cuda" if config.DEVICE == "cuda" and torch.cuda.is_available() else "cpu")
 
