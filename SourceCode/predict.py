@@ -1,39 +1,28 @@
 import argparse
 import torch
 from PIL import Image
-from torchvision import transforms
+from torchvision import transforms, models
+import torch.nn as nn
 
 import config
-from model_baseline import CNNBaseline
-from model_cbam import CNN_CBAM
 
 LABELS = ["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"]
 
 
 def get_model(name):
-    if name == "cbam":
-        return CNN_CBAM()
     if name == "resnet18":
-        from torchvision import models
-        model = models.resnet18(pretrained=False)
-        model.fc = torch.nn.Linear(model.fc.in_features, config.NUM_CLASSES)
+        model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        model.fc = nn.Linear(model.fc.in_features, config.NUM_CLASSES)
         return model
-    return CNNBaseline()
+    raise ValueError(f"Model không hỗ trợ: {name}")
 
 
-def get_transform(model_name="baseline"):
-    if model_name == "resnet18":
-        normalize = transforms.Normalize(config.IMAGENET_MEAN, config.IMAGENET_STD)
-        channel_transform = transforms.Grayscale(num_output_channels=3)
-    else:
-        normalize = transforms.Normalize(config.GRAYSCALE_MEAN, config.GRAYSCALE_STD)
-        channel_transform = transforms.Grayscale()
-
+def get_transform(model_name="resnet18"):
     return transforms.Compose([
         transforms.Resize((config.IMAGE_SIZE, config.IMAGE_SIZE)),
-        channel_transform,
+        transforms.Grayscale(num_output_channels=3),
         transforms.ToTensor(),
-        normalize
+        transforms.Normalize(config.IMAGENET_MEAN, config.IMAGENET_STD)
     ])
 
 

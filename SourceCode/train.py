@@ -7,12 +7,51 @@ from torchvision import models
 
 import config
 from dataset import get_dataloaders
-from regularization import get_l1_weight, get_l2_weight
-from model_baseline import CNNBaseline
-from model_cbam import CNN_CBAM
 
-SUPPORTED_MODELS = ["baseline", "cbam", "resnet18"]
+SUPPORTED_MODELS = ["resnet18"]
 PRETRAINED_MODELS = {"resnet18"}
+
+# ============================================================================
+# MODEL WRAPPER FOR DROPOUT
+# ============================================================================
+class ResNet18WithDropout(nn.Module):
+    """ResNet18 with optional dropout layer"""
+    def __init__(self, base_model, dropout_rate=0.0):
+        super().__init__()
+        self.base = base_model
+        self.dropout = nn.Dropout(dropout_rate) if dropout_rate > 0 else None
+    
+    def forward(self, x):
+        # Forward through ResNet18
+        x = self.base.conv1(x)
+        x = self.base.bn1(x)
+        x = self.base.relu(x)
+        x = self.base.maxpool(x)
+        x = self.base.layer1(x)
+        x = self.base.layer2(x)
+        x = self.base.layer3(x)
+        x = self.base.layer4(x)
+        x = self.base.avgpool(x)
+        x = torch.flatten(x, 1)
+        
+        # Apply dropout before final FC layer
+        if self.dropout is not None:
+            x = self.dropout(x)
+        
+        x = self.base.fc(x)
+        return x
+    
+    def eval(self):
+        super().eval()
+        if self.dropout is not None:
+            self.dropout.eval()
+        return self
+    
+    def train(self, mode=True):
+        super().train(mode)
+        if self.dropout is not None:
+            self.dropout.train(mode)
+        return self
 
 
 def get_device():
@@ -20,16 +59,14 @@ def get_device():
 
 
 def get_model(name):
-    if name == "cbam":
-        return CNN_CBAM()
     if name == "resnet18":
         model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
         model.fc = nn.Linear(model.fc.in_features, config.NUM_CLASSES)
         return model
-    return CNNBaseline()
+    raise ValueError(f"Model không hỗ trợ: {name}")
 
 
-def train_epoch(model, loader, criterion, optimizer, device, l1_factor=0.0):
+def train_epoch(model, loader, criterion, optimizer, device, reg_type="L2", reg_factor=0.0):
     model.train()
     total_loss = 0.0
     correct = 0
@@ -42,9 +79,12 @@ def train_epoch(model, loader, criterion, optimizer, device, l1_factor=0.0):
         optimizer.zero_grad()
         outputs = model(images)
         loss = criterion(outputs, labels)
-        if l1_factor != 0.0:
-            l1_penalty = sum(param.abs().sum() for param in model.parameters() if param.requires_grad)
-            loss = loss + l1_factor * l1_penalty
+        
+        # Add L1 regularization if selected (L2 handled via weight_decay)
+        if reg_type == "L1" and reg_factor > 0:
+            l1_norm = sum(torch.sum(torch.abs(p)) for p in model.parameters() if p.requires_grad)
+            loss = loss + reg_factor * l1_norm
+        
         loss.backward()
         optimizer.step()
 
@@ -235,6 +275,10 @@ def parse_args():
                         help="Learning rate")
     parser.add_argument("--batch-size", type=int, default=config.BATCH_SIZE,
                         help="Kích thước batch")
+    parser.add_argument("--reg-type", choices=["L2", "L1", "Dropout", "None"], default="L2",
+                        help="Loại regularization: L2, L1, Dropout, hoặc None")
+    parser.add_argument("--reg-factor", type=float, default=5e-4,
+                        help="Regularization factor (cho L1/L2) hoặc dropout rate (cho Dropout)")
     return parser.parse_args()
 
 
@@ -259,9 +303,13 @@ def main():
     best_val_acc = 0.0
 
     if args.train:
-        l2_weight = get_l2_weight()
-        l1_weight = get_l1_weight()
-        optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=l2_weight)
+        # Setup regularization
+        weight_decay = 0.0
+        if args.reg_type == "L2":
+            weight_decay = args.reg_factor
+        # L1 applied in loop, Dropout applied as wrapper
+        
+        optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=weight_decay)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", factor=0.5, patience=3
         )
@@ -277,9 +325,16 @@ def main():
             )
             start_epoch = loaded_epoch + 1
             print(f"Resume từ epoch {start_epoch} với checkpoint {args.checkpoint}")
+        
+        # Apply dropout wrapper if selected
+        if args.reg_type == "Dropout":
+            model = ResNet18WithDropout(model, args.reg_factor)
+        
+        print(f"Training config: reg_type={args.reg_type}, reg_factor={args.reg_factor}")
 
         for epoch in range(start_epoch, args.epochs + 1):
-            train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, l1_factor=l1_weight)
+            train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, 
+                                                 reg_type=args.reg_type, reg_factor=args.reg_factor)
             val_loss, val_acc = evaluate(model, val_loader, criterion, device)
             scheduler.step(val_loss)
 

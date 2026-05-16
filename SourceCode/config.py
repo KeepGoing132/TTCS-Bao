@@ -3,7 +3,7 @@ TEST_DIR = "archive/test"
 
 IMAGE_SIZE = 48
 BATCH_SIZE = 32
-NUM_WORKERS = 2
+NUM_WORKERS = 0  # Giảm CPU usage: 0 = không dùng worker process
 VAL_SPLIT = 0.2
 NUM_CLASSES = 7  # angry, disgust, fear, happy, neutral, sad, surprise
 LR = 1e-3
