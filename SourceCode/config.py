@@ -1,24 +1,56 @@
-TRAIN_DIR = "archive/train"
-TEST_DIR = "archive/test"
+# RAF-DB Dataset Configuration
+TRAIN_DIR = "dataset/DATASET/train"
+TEST_DIR = "dataset/DATASET/test"
 
-IMAGE_SIZE = 48
-BATCH_SIZE = 32
-NUM_WORKERS = 0  # Giảm CPU usage: 0 = không dùng worker process
+# Model Configuration
+MODEL_NAME = "resnet50"
+NUM_CLASSES = 7
+PRETRAINED = True
+
+# Image Configuration
+IMAGE_SIZE = 224
+RAF_DB_MEAN = [0.57535914, 0.44928582, 0.40079932]
+RAF_DB_STD = [0.20735591, 0.18981615, 0.18132027]
+
+# Training Configuration
+BATCH_SIZE = 64
+NUM_WORKERS = 2
 VAL_SPLIT = 0.2
-NUM_CLASSES = 7  # angry, disgust, fear, happy, neutral, sad, surprise
-LR = 1e-3
-USE_REGULARIZATION = True  # Set False to disable all regularization
-REGULARIZATION_TYPE = "l2"  # Options: "none", "l1", "l2"
-REGULARIZATION_FACTOR = 5e-4  # Regularization strength for L1 or L2
-USE_DROPOUT = True  # Set False to disable dropout layers in models
-DROPOUT_PROB = 0.3  # Dropout probability used when USE_DROPOUT is True
-EPOCHS = 50
-DEVICE = "cuda"  
+EPOCHS = 100
+DEVICE = "cuda"
+SEED = 42
 
-USE_WEIGHT_DECAY = USE_REGULARIZATION and REGULARIZATION_TYPE == "l2"
-WEIGHT_DECAY = REGULARIZATION_FACTOR if USE_WEIGHT_DECAY else 0.0
+# Optimization Configuration
+LR = 0.01
+LR_SCHEDULER = "step"
+LR_FACTOR = 0.1
+LR_PATIENCE = 30
+MOMENTUM = 0.9
+WEIGHT_DECAY = 1e-4
 
-GRAYSCALE_MEAN = [0.5]
-GRAYSCALE_STD = [0.5]
-IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD = [0.229, 0.224, 0.225]
+# Regularization & Dropout
+USE_DROPOUT = True
+DROPOUT_PROB = 0.3
+USE_REGULARIZATION = True
+REGULARIZATION_TYPE = "l2"
+REGULARIZATION_FACTOR = 5e-4
+
+# Checkpoint & Logging
+CHECKPOINT_DIR = "checkpoint"
+LOG_DIR = "log"
+PRINT_FREQ = 10
+SAVE_FREQ = 5
+
+# Inference Configuration
+CONFIDENCE_THRESHOLD = 0.5
+
+# RAF-DB Emotion Labels (0-indexed)
+EMOTION_LABELS = {
+    0: "Surprise",
+    1: "Fear",
+    2: "Disgust",
+    3: "Happiness",
+    4: "Sadness",
+    5: "Anger",
+    6: "Neutral"
+}
