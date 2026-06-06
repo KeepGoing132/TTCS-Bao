@@ -1,7 +1,4 @@
-"""
-RAF-DB Dataset Module
-Handles loading and preprocessing of RAF-DB (Real-world Affective Faces Database)
-"""
+
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Subset
@@ -9,18 +6,9 @@ import config
 
 
 def get_raf_db_transforms(train=False):
-    """
-    Get RAF-DB optimized transforms.
-    
-    RAF-DB uses:
-    - Image size: 224x224
-    - Normalization: Custom statistics from RAF-DB
-    - Data augmentation for training
-    """
     transform_list = []
     
     if train:
-        # Training augmentations
         transform_list.extend([
             transforms.RandomResizedCrop(
                 config.IMAGE_SIZE,
@@ -40,12 +28,10 @@ def get_raf_db_transforms(train=False):
             ),
         ])
     else:
-        # Validation/Test transforms (minimal)
         transform_list.append(
             transforms.Resize((config.IMAGE_SIZE, config.IMAGE_SIZE))
         )
     
-    # Normalize with RAF-DB statistics
     transform_list.extend([
         transforms.ToTensor(),
         transforms.Normalize(
@@ -58,17 +44,6 @@ def get_raf_db_transforms(train=False):
 
 
 def get_dataloaders(batch_size=None):
-    """
-    Create train, validation, and test dataloaders for RAF-DB.
-    
-    Args:
-        batch_size: Batch size for dataloaders (default: config.BATCH_SIZE)
-    
-    Returns:
-        train_loader: DataLoader for training set
-        val_loader: DataLoader for validation set
-        test_loader: DataLoader for test set
-    """
     if batch_size is None:
         batch_size = config.BATCH_SIZE
     
@@ -76,19 +51,16 @@ def get_dataloaders(batch_size=None):
     val_transform = get_raf_db_transforms(train=False)
     test_transform = get_raf_db_transforms(train=False)
     
-    # Load full training dataset
     full_dataset = datasets.ImageFolder(root=config.TRAIN_DIR)
     total_samples = len(full_dataset)
     val_size = int(total_samples * config.VAL_SPLIT)
     train_size = total_samples - val_size
     
-    # Split dataset deterministically
     torch.manual_seed(config.SEED)
     all_indices = torch.randperm(total_samples).tolist()
     train_indices = all_indices[:train_size]
     val_indices = all_indices[train_size:]
     
-    # Create datasets
     train_dataset = Subset(
         datasets.ImageFolder(root=config.TRAIN_DIR, transform=train_transform),
         train_indices
@@ -102,7 +74,6 @@ def get_dataloaders(batch_size=None):
         transform=test_transform
     )
     
-    # Create dataloaders with flexible batch size
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,

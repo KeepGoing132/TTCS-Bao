@@ -1,6 +1,4 @@
-"""
-Loss functions for emotion recognition
-"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,38 +6,14 @@ import config
 
 
 def cross_entropy(output, target):
-    """
-    Cross entropy loss for soft labels (Knowledge Distillation)
-    Used when target is soft probability distribution instead of hard labels
-    
-    Args:
-        output: Model output logits
-        target: Soft probability distribution (from teacher model)
-        
-    Returns:
-        Loss value
-    """
     return torch.sum(-target * F.log_softmax(output, dim=1), dim=1).mean()
 
 
 def get_criterion(reduction='mean'):
-    """
-    Get loss function based on config.
-    
-    Args:
-        reduction (str): 'mean' or 'none'
-        
-    Returns:
-        Loss function
-    """
     return nn.CrossEntropyLoss(reduction=reduction)
 
 
 class FocalLoss(nn.Module):
-    """
-    Focal Loss for handling class imbalance
-    Reference: https://arxiv.org/abs/1708.02002
-    """
     def __init__(self, alpha=1, gamma=2):
         super(FocalLoss, self).__init__()
         self.alpha = alpha
@@ -53,9 +27,6 @@ class FocalLoss(nn.Module):
 
 
 class LabelSmoothingLoss(nn.Module):
-    """
-    Label smoothing loss to improve generalization
-    """
     def __init__(self, num_classes, smoothing=0.1):
         super(LabelSmoothingLoss, self).__init__()
         self.num_classes = num_classes
@@ -73,9 +44,6 @@ class LabelSmoothingLoss(nn.Module):
 
 
 class L1L2RegularizationLoss(nn.Module):
-    """
-    L1/L2 Regularization loss
-    """
     def __init__(self, model, reg_type='l2', factor=5e-4):
         super(L1L2RegularizationLoss, self).__init__()
         self.model = model
@@ -97,5 +65,4 @@ class L1L2RegularizationLoss(nn.Module):
             return 0
 
 
-# Alias for backward compatibility
 CrossEntropy = get_criterion

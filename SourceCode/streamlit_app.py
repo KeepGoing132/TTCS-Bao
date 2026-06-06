@@ -1,5 +1,4 @@
 import os
-# Set GPU device BEFORE importing torch
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -82,8 +81,9 @@ def predict_emotion(image_array, model, transform):
         probs = torch.softmax(output, dim=1)
         pred_idx = torch.argmax(probs, dim=1).item()
         pred_prob = probs[0, pred_idx].item()
+        all_probs = probs[0].cpu().numpy()
     
-    return pred_idx, pred_prob
+    return pred_idx, pred_prob, all_probs
 
 def main():
     st.sidebar.title("⚙️ Configuration")
@@ -394,34 +394,209 @@ def main():
         
         if st.button("🔍 Evaluate on Test Set", key="eval_test", use_container_width=True, type="primary"):
             if st.session_state.model_loaded:
-                st.info("Running evaluation on test set... (Simulation)")
-                
-                # Simulate evaluation
-                progress_bar = st.progress(0)
-                test_images = 50
-                
-                correct = 0
-                total = 0
-                
-                for i in range(test_images):
-                    progress_bar.progress((i + 1) / test_images)
-                    if np.random.rand() > 0.3:  # Simulate 70% accuracy
-                        correct += 1
-                    total += 1
-                
-                accuracy = (correct / total) * 100
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Accuracy", f"{accuracy:.2f}%")
-                with col2:
-                    st.metric("Correct", f"{correct}/{total}")
-                with col3:
-                    st.metric("Error Rate", f"{100-accuracy:.2f}%")
-                
-                st.success("✅ Evaluation complete!")
+                try:
+                    import gc
+                    
+                    st.info("Preparing evaluation on CPU...")
+                    # Force CPU for evaluation to avoid OOM
+                    cpu_device = torch.device('cpu')
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                    
+                    # Load model directly from checkpoint on CPU
+                    best_path = 'checkpoint/model_best.pth.tar'
+                    if not os.path.exists(best_path):
+                        st.error("❌ No checkpoint found!")
+                    else:
+                        model = get_model(num_classes=config.NUM_CLASSES, pretrained=False)
+                        model = model.to(cpu_device)
+                        checkpoint = torch.load(best_path, map_location=cpu_device)
+                        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                            model.load_state_dict(checkpoint['state_dict'])
+                        else:
+                            model.load_state_dict(checkpoint)
+                        model.eval()
+                        
+                        st.info("Loading test set on CPU...")
+                        # Use very small batch size to avoid OOM
+                        eval_batch_size = 8
+                        _, _, test_loader = get_dataloaders(batch_size=eval_batch_size)
+                        
+                        st.info("Running evaluation on CPU...")
+                        progress_bar = st.progress(0)
+                        
+                        correct = 0
+                        total = 0
+                        predictions = []
+                        ground_truth = []
+                        
+                        batch_idx = 0
+                        total_batches = len(test_loader)
+                        
+                        with torch.no_grad():
+                            for images, labels in test_loader:
+                                # Keep on CPU
+                                images = images.to(cpu_device)
+                                labels = labels.to(cpu_device)
+                                
+                                # Forward pass on CPU
+                                outputs = model(images)
+                                _, predicted = torch.max(outputs, 1)
+                                
+                                batch_correct = (predicted == labels).sum().item()
+                                batch_total = labels.size(0)
+                                
+                                correct += batch_correct
+                                total += batch_total
+                                
+                                predictions.extend(predicted.cpu().numpy())
+                                ground_truth.extend(labels.cpu().numpy())
+                                
+                                # Clear memory
+                                del images, labels, outputs, predicted
+                                
+                                # Update progress
+                                batch_idx += 1
+                                progress = min(batch_idx / total_batches, 1.0)
+                                progress_bar.progress(progress)
+                        
+                        accuracy_pct = (correct / total) * 100
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Accuracy", f"{accuracy_pct:.2f}%")
+                        with col2:
+                            st.metric("Correct", f"{correct}/{total}")
+                        with col3:
+                            st.metric("Error Rate", f"{100-accuracy_pct:.2f}%")
+                        
+                        # Per-class accuracy
+                        st.subheader("📊 Per-Class Accuracy")
+                    per_class_acc = {}
+                    for cls in range(config.NUM_CLASSES):
+                        mask = np.array(ground_truth) == cls
+                        if mask.sum() > 0:
+                            cls_acc = ((np.array(predictions)[mask] == cls).sum() / mask.sum()) * 100
+                            per_class_acc[config.EMOTION_LABELS[cls]] = cls_acc
+                    
+                    if per_class_acc:
+                        df_per_class = pd.DataFrame(list(per_class_acc.items()), columns=['Emotion', 'Accuracy'])
+                        st.dataframe(df_per_class, use_container_width=True)
+                    
+                    st.success("✅ Evaluation complete!")
+                    
+                except Exception as e:
+                    st.error(f"❌ Error during evaluation: {e}")
+                    import traceback
+                    traceback.print_exc()
             else:
                 st.warning("⚠️ Please load a model first!")
+        
+        
+        st.divider()
+        
+        if st.button("🎲 Show 20 Random Samples", key="show_samples", use_container_width=True, type="secondary"):
+            try:
+                import gc
+                
+                st.info("Loading model checkpoint from disk...")
+                # Load checkpoint directly to CPU (skip GPU entirely for this)
+                cpu_device = torch.device('cpu')
+                
+                # Load from best checkpoint
+                best_path = 'checkpoint/model_best.pth.tar'
+                if not os.path.exists(best_path):
+                    st.error("❌ No checkpoint found! Please train model first.")
+                else:
+                    # Create fresh model instance on CPU
+                    model = get_model(num_classes=config.NUM_CLASSES, pretrained=False)
+                    model = model.to(cpu_device)
+                    
+                    # Load checkpoint weights
+                    checkpoint = torch.load(best_path, map_location=cpu_device)
+                    if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                        model.load_state_dict(checkpoint['state_dict'])
+                    else:
+                        model.load_state_dict(checkpoint)
+                    
+                    model.eval()
+                    st.info("Sampling 20 random images from test set...")
+                    
+                    # Get all test image paths
+                    from pathlib import Path
+                    test_dir = Path(config.TEST_DIR)
+                    
+                    # Collect all image paths with their labels
+                    image_paths = []
+                    image_labels = []
+                    
+                    for emotion_idx in range(config.NUM_CLASSES):
+                        emotion_dir = test_dir / str(emotion_idx + 1)  # Folders are 1-7
+                        if emotion_dir.exists():
+                            for img_path in emotion_dir.glob('*.[jp][pn]g'):
+                                image_paths.append(str(img_path))
+                                image_labels.append(emotion_idx)
+                    
+                    if len(image_paths) == 0:
+                        st.error("❌ No test images found!")
+                    else:
+                        # Random sample 20 images (different each time)
+                        sample_indices = np.random.choice(len(image_paths), min(20, len(image_paths)), replace=False)
+                        
+                        sample_paths = [image_paths[i] for i in sample_indices]
+                        sample_labels = [image_labels[i] for i in sample_indices]
+                        
+                        # Get transform for test images
+                        transform = get_raf_db_transforms(train=False)
+                        
+                        # Display images in grid
+                        st.subheader(f"📸 {len(sample_paths)} Random Test Samples")
+                        
+                        cols = st.columns(4)
+                        
+                        with torch.no_grad():
+                            for idx, (img_path, true_label_idx) in enumerate(zip(sample_paths, sample_labels)):
+                                col = cols[idx % 4]
+                                
+                                with col:
+                                    try:
+                                        # Load image
+                                        img = Image.open(img_path).convert('RGB')
+                                        img_tensor = transform(img).unsqueeze(0)
+                                        
+                                        # Inference on CPU
+                                        img_tensor_cpu = img_tensor.to(cpu_device)
+                                        outputs = model(img_tensor_cpu)
+                                        probs = torch.nn.functional.softmax(outputs, dim=1)
+                                        pred_idx = torch.argmax(probs, dim=1).item()
+                                        confidence = probs[0, pred_idx].item()
+                                        
+                                        # Display
+                                        st.image(img, use_container_width=True)
+                                        
+                                        true_label = config.EMOTION_LABELS[true_label_idx]
+                                        pred_label = config.EMOTION_LABELS[pred_idx]
+                                        
+                                        st.caption(f"**True:** {true_label}")
+                                        
+                                        is_correct = true_label_idx == pred_idx
+                                        if is_correct:
+                                            st.caption(f"✅ **Pred:** {pred_label}\n*{confidence*100:.1f}%*")
+                                        else:
+                                            st.caption(f"❌ **Pred:** {pred_label}\n*{confidence*100:.1f}%*")
+                                        
+                                        # Clear memory
+                                        del img_tensor_cpu, outputs, probs
+                                        
+                                    except Exception as e:
+                                        st.error(f"Error loading {img_path}: {e}")
+                        
+                        st.success("✅ Samples displayed!")
+                    
+            except Exception as e:
+                st.error(f"❌ Error displaying samples: {e}")
+                import traceback
+                traceback.print_exc()
     
     with tab3:
         st.header("📊 Evaluate Model")
@@ -497,7 +672,7 @@ def main():
                         transform = get_transform()
                         
                         with st.spinner("Predicting..."):
-                            pred_idx, pred_prob = predict_emotion(image, model, transform)
+                            pred_idx, pred_prob, all_probs = predict_emotion(image, model, transform)
                         
                         pred_label = LABELS[pred_idx]
                         conf_percent = pred_prob * 100
@@ -505,9 +680,9 @@ def main():
                         st.metric("Predicted Emotion", pred_label)
                         st.metric("Confidence", f"{conf_percent:.1f}%")
                         
-                        # Emotion breakdown
+                        # Emotion breakdown - use actual model scores
                         st.markdown("### 📊 Confidence Scores")
-                        scores = np.random.dirichlet(np.ones(7))
+                        scores = all_probs  # Use actual model probabilities
                         
                         fig, ax = plt.subplots(figsize=(10, 4))
                         bars = ax.barh(LABELS_CLEAN, scores)

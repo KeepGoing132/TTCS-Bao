@@ -1,7 +1,4 @@
-"""
-Utility functions for training and evaluation
-Includes: metrics, logging, checkpointing
-"""
+
 import os
 import torch
 import numpy as np
@@ -11,7 +8,6 @@ import config
 
 
 class AverageMeter:
-    """Computes and stores the average and current value"""
     
     def __init__(self, name, fmt=':f'):
         self.name = name
@@ -36,7 +32,6 @@ class AverageMeter:
 
 
 class ProgressMeter:
-    """Displays progress of training"""
     
     def __init__(self, num_batches, meters, prefix=""):
         self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
@@ -55,7 +50,6 @@ class ProgressMeter:
 
 
 class RecorderMeter:
-    """Records and plots training metrics"""
     
     def __init__(self, num_epochs):
         self.num_epochs = num_epochs
@@ -70,14 +64,12 @@ class RecorderMeter:
         }
     
     def update(self, epoch, train_loss, train_acc, val_loss, val_acc):
-        """Update metrics for an epoch"""
         self.values['train_loss'].append(train_loss)
         self.values['train_acc'].append(train_acc)
         self.values['val_loss'].append(val_loss)
         self.values['val_acc'].append(val_acc)
     
     def plot_curve(self, save_path):
-        """Plot training curves"""
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
         
         epochs = range(1, len(self.values['train_loss']) + 1)
@@ -172,7 +164,6 @@ def adjust_learning_rate(optimizer, epoch, args):
     if hasattr(args, 'lr_factor') and hasattr(args, 'lr_patience'):
         lr = args.lr * (args.lr_factor ** (epoch // args.lr_patience))
     else:
-        # Use config values
         lr = config.LR * (config.LR_FACTOR ** (epoch // config.LR_PATIENCE))
     
     for param_group in optimizer.param_groups:

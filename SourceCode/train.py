@@ -1,7 +1,4 @@
-"""
-Training script for RAF-DB Emotion Recognition with ResNet50
-Optimized for RTX 3050 Ti GPU
-"""
+
 import os
 import argparse
 import time
@@ -23,7 +20,6 @@ from utils import (
 
 
 def parse_args():
-    """Parse command line arguments"""
     parser = argparse.ArgumentParser(
         description='Train emotion recognition model on RAF-DB with ResNet50'
     )
@@ -46,7 +42,6 @@ def parse_args():
 
 
 def train_epoch(train_loader, model, criterion, optimizer, device, epoch, args, log_path):
-    """Train for one epoch"""
     model.train()
     
     losses = AverageMeter('Loss', ':.4f')
@@ -61,11 +56,9 @@ def train_epoch(train_loader, model, criterion, optimizer, device, epoch, args, 
         images = images.to(device)
         target = target.to(device)
         
-        # Forward pass
         output = model(images)
         loss = criterion(output, target)
         
-        # Add regularization if needed
         if config.USE_REGULARIZATION:
             reg_factor = config.REGULARIZATION_FACTOR
             if config.REGULARIZATION_TYPE == 'l2':
@@ -75,20 +68,16 @@ def train_epoch(train_loader, model, criterion, optimizer, device, epoch, args, 
                 l1_reg = sum(torch.sum(torch.abs(p)) for p in model.parameters())
                 loss = loss + reg_factor * l1_reg
         
-        # Backward pass
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         
-        # Metrics
         acc1, _ = accuracy(output, target, topk=(1, 5))
         losses.update(loss.item(), images.size(0))
         top1.update(acc1[0].item(), images.size(0))
         
-        # Print progress
         if (i + 1) % config.PRINT_FREQ == 0:
             progress.display(i + 1)
-            # Show parameters
             lr = optimizer.param_groups[0]['lr']
             print(f"    ├─ Accuracy: {top1.avg:.2f}% | LR: {lr:.2e} | "
                   f"Reg: {config.REGULARIZATION_TYPE} | Dropout: {config.USE_DROPOUT} ({config.DROPOUT_PROB})")
@@ -97,7 +86,6 @@ def train_epoch(train_loader, model, criterion, optimizer, device, epoch, args, 
 
 
 def validate(val_loader, model, criterion, device, epoch, log_path=None):
-    """Validate model"""
     model.eval()
     
     losses = AverageMeter('Loss', ':.4f')
@@ -108,11 +96,9 @@ def validate(val_loader, model, criterion, device, epoch, log_path=None):
             images = images.to(device)
             target = target.to(device)
             
-            # Forward pass
             output = model(images)
             loss = criterion(output, target)
             
-            # Metrics
             acc1, _ = accuracy(output, target, topk=(1, 5))
             losses.update(loss.item(), images.size(0))
             top1.update(acc1[0].item(), images.size(0))
@@ -121,15 +107,12 @@ def validate(val_loader, model, criterion, device, epoch, log_path=None):
 
 
 def main():
-    """Main training function"""
     args = parse_args()
     
-    # Setup device
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     cudnn.benchmark = True
     
-    # Setup logging
     log_path = create_logger()
     now = datetime.datetime.now()
     log_message(log_path, f"Training started: {now.strftime('%m-%d %H:%M')}")
@@ -141,7 +124,6 @@ def main():
     best_acc = 0
     start_epoch = 0
     
-    # Create model
     print("Creating ResNet50 model...")
     model = get_model(
         num_classes=config.NUM_CLASSES,
@@ -149,11 +131,9 @@ def main():
     )
     model = model.to(device)
     
-    # Create data loaders
     print("Loading datasets...")
     train_loader, val_loader, test_loader = get_dataloaders(batch_size=args.batch_size)
     
-    # Define loss function and optimizer
     criterion = get_criterion()
     optimizer = optim.SGD(
         model.parameters(),
@@ -162,7 +142,6 @@ def main():
         weight_decay=config.WEIGHT_DECAY
     )
     
-    # Optional: Load checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
             print(f"Loading checkpoint: {args.resume}")
@@ -172,39 +151,31 @@ def main():
         else:
             print(f"Checkpoint not found: {args.resume}")
     
-    # Create recorder for metrics
     recorder = RecorderMeter(args.epochs)
     
-    # Evaluate mode
     if args.evaluate:
         print("Evaluating model...")
         val_acc, val_loss = validate(val_loader, model, criterion, device, 0, log_path)
         print(f"Validation - Loss: {val_loss:.4f}, Accuracy: {val_acc:.2f}%")
         return
     
-    # Training loop
     print("Starting training...")
     for epoch in range(start_epoch, args.epochs):
         start_time = time.time()
         
-        # Adjust learning rate
         current_lr = adjust_learning_rate(optimizer, epoch, args)
         log_message(log_path, f"Epoch [{epoch+1}/{args.epochs}] LR: {current_lr:.6f}")
         
-        # Train for one epoch
         train_loss, train_acc = train_epoch(
             train_loader, model, criterion, optimizer, device, epoch, args, log_path
         )
         
-        # Validate
         val_loss, val_acc = validate(
             val_loader, model, criterion, device, epoch, log_path
         )
         
-        # Record metrics
         recorder.update(epoch, train_loss, train_acc, val_loss, val_acc)
         
-        # Save checkpoint
         is_best = val_acc > best_acc
         best_acc = max(val_acc, best_acc)
         
@@ -220,16 +191,13 @@ def main():
             os.makedirs(config.CHECKPOINT_DIR, exist_ok=True)
             save_checkpoint(checkpoint, is_best, args)
         
-        # Plot curves
         curve_path = os.path.join(config.LOG_DIR, 'training_curve.png')
         recorder.plot_curve(curve_path)
         
-        # Epoch time
         end_time = time.time()
         epoch_time = end_time - start_time
         log_message(log_path, f"Epoch time: {epoch_time:.2f}s, Best Acc: {best_acc:.2f}%\n")
         
-        # Print comprehensive epoch summary
         print(f"\n{'='*100}")
         print(f"Epoch [{epoch+1}/{args.epochs}] | Time: {epoch_time:.2f}s")
         print(f"  📊 Train: Loss={train_loss:.4f}, Acc={train_acc:.2f}%")

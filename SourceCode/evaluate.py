@@ -1,6 +1,4 @@
-"""
-Evaluation and inference script for RAF-DB model
-"""
+
 import os
 import argparse
 import torch
@@ -17,7 +15,6 @@ from utils import accuracy, load_checkpoint
 
 
 def evaluate_on_test_set(model, test_loader, criterion, device):
-    """Evaluate model on test set"""
     model.eval()
     
     total_loss = 0.0
@@ -31,11 +28,9 @@ def evaluate_on_test_set(model, test_loader, criterion, device):
             images = images.to(device)
             labels = labels.to(device)
             
-            # Forward pass
             outputs = model(images)
             loss = criterion(outputs, labels)
             
-            # Metrics
             total_loss += loss.item() * images.size(0)
             preds = outputs.argmax(dim=1)
             correct += (preds == labels).sum().item()
@@ -58,7 +53,6 @@ def evaluate_on_test_set(model, test_loader, criterion, device):
 
 
 def predict_image(image_path, model, device):
-    """Predict emotion for a single image"""
     # Load and preprocess image
     image = Image.open(image_path).convert('RGB')
     
@@ -74,7 +68,6 @@ def predict_image(image_path, model, device):
     
     image = transform(image).unsqueeze(0).to(device)
     
-    # Inference
     model.eval()
     with torch.no_grad():
         output = model(image)
@@ -96,7 +89,6 @@ def predict_image(image_path, model, device):
 
 
 def batch_predict_images(image_dir, model, device):
-    """Predict emotions for all images in a directory"""
     results = []
     
     for filename in os.listdir(image_dir):
