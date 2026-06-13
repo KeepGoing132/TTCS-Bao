@@ -59,15 +59,6 @@ def train_epoch(train_loader, model, criterion, optimizer, device, epoch, args, 
         output = model(images)
         loss = criterion(output, target)
         
-        if config.USE_REGULARIZATION:
-            reg_factor = config.REGULARIZATION_FACTOR
-            if config.REGULARIZATION_TYPE == 'l2':
-                l2_reg = sum(torch.sum(p ** 2) for p in model.parameters())
-                loss = loss + reg_factor * l2_reg
-            elif config.REGULARIZATION_TYPE == 'l1':
-                l1_reg = sum(torch.sum(torch.abs(p)) for p in model.parameters())
-                loss = loss + reg_factor * l1_reg
-        
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -80,7 +71,7 @@ def train_epoch(train_loader, model, criterion, optimizer, device, epoch, args, 
             progress.display(i + 1)
             lr = optimizer.param_groups[0]['lr']
             print(f"    ├─ Accuracy: {top1.avg:.2f}% | LR: {lr:.2e} | "
-                  f"Reg: {config.REGULARIZATION_TYPE} | Dropout: {config.USE_DROPOUT} ({config.DROPOUT_PROB})")
+                  f"Dropout: {config.USE_DROPOUT} ({config.DROPOUT_PROB})")
     
     return losses.avg, top1.avg
 
@@ -203,8 +194,7 @@ def main():
         print(f"  📊 Train: Loss={train_loss:.4f}, Acc={train_acc:.2f}%")
         print(f"  📊 Val:   Loss={val_loss:.4f}, Acc={val_acc:.2f}% | Best: {best_acc:.2f}%")
         print(f"  ⚙️  LR={args.lr:.2e}, BatchSize={args.batch_size}, Epochs={args.epochs}")
-        print(f"  🔧 Regularization: {config.REGULARIZATION_TYPE} (factor={config.REGULARIZATION_FACTOR})")
-        print(f"  💧 Dropout: {config.USE_DROPOUT} (rate={config.DROPOUT_PROB})")
+        print(f"   Dropout: {config.USE_DROPOUT} (rate={config.DROPOUT_PROB})")
         print(f"  🖥️  Device: {device}")
         print(f"{'='*100}\n")
     

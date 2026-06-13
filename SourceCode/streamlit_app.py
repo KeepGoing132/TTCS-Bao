@@ -1,6 +1,6 @@
 import os
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'  
 
 import streamlit as st
 import torch
@@ -93,12 +93,6 @@ def main():
         batch_size = st.selectbox("Batch Size", [32, 64, 128], index=1)
         lr = st.number_input("Learning Rate", min_value=0.0001, max_value=1.0, value=0.01, step=0.0001, format="%.6f")
     
-    with st.sidebar.expander("📊 Regularization", expanded=False):
-        reg_type = st.radio("Type", ["None", "L2"], horizontal=True)
-        if reg_type != "None":
-            reg_factor = st.number_input(f"{reg_type} Factor", min_value=0.0, max_value=0.01, value=5e-4, step=1e-5, format="%.6f")
-        else:
-            reg_factor = 0.0
     
     with st.sidebar.expander("🔧 Dropout", expanded=False):
         use_dropout = st.checkbox("Enable Dropout", value=config.DROPOUT_PROB > 0, help="Add dropout before FC layer")
@@ -118,7 +112,6 @@ def main():
     - **Epochs:** {epochs}  
     - **Batch Size:** {batch_size}  
     - **LR:** {lr:.2e}  
-    - **Regularization:** {reg_type}  
     - **Dropout:** {'Yes' if use_dropout else 'No'}
     """)
     
@@ -188,16 +181,12 @@ def main():
                 with col4:
                     st.metric("🎯 Num Classes", config.NUM_CLASSES)
                 
-                col5, col6, col7 = st.columns(3)
+                col5, col6 = st.columns(2)
                 with col5:
-                    st.metric("🔧 Regularization", reg_type)
-                    if reg_type != "None":
-                        st.text(f"Factor: {reg_factor:.2e}")
-                with col6:
                     st.metric("💧 Dropout", "Yes" if use_dropout else "No")
                     if use_dropout:
                         st.text(f"Rate: {dropout_rate:.2f}")
-                with col7:
+                with col6:
                     device_check = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
                     st.metric("🖥️ Device", str(device_check).upper())
                     if torch.cuda.is_available():
@@ -206,10 +195,9 @@ def main():
             progress_bar = st.progress(0)
             status_text = st.empty()
             metrics_placeholder = st.container()
-            output_log = st.empty()  # Real-time output log
+            output_log = st.empty()  
             
             try:
-                # Load real data with caching
                 st.info("📂 Loading RAF-DB dataset...")
                 train_loader, val_loader, _ = get_dataloaders_cached(batch_size=batch_size)
                 st.success(f"✅ Train batches: {len(train_loader)} | Val batches: {len(val_loader)}")
@@ -249,8 +237,7 @@ def main():
                 
                 # Loss and optimizer
                 criterion = nn.CrossEntropyLoss()
-                weight_decay = 5e-4 if reg_type == "L2" else 0.0
-                optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=weight_decay)
+                optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=config.WEIGHT_DECAY)
                 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
                 
                 best_val_acc = 0.0

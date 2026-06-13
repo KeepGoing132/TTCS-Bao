@@ -22,7 +22,6 @@ SEED = 42
 
 # Optimization Configuration
 LR = 0.01
-LR_SCHEDULER = "step"
 LR_FACTOR = 0.1
 LR_PATIENCE = 30
 MOMENTUM = 0.9
@@ -31,18 +30,12 @@ WEIGHT_DECAY = 1e-4
 # Regularization & Dropout
 USE_DROPOUT = True
 DROPOUT_PROB = 0.3
-USE_REGULARIZATION = True
-REGULARIZATION_TYPE = "l2"
-REGULARIZATION_FACTOR = 5e-4
 
 # Checkpoint & Logging
 CHECKPOINT_DIR = "checkpoint"
 LOG_DIR = "log"
 PRINT_FREQ = 10
 SAVE_FREQ = 5
-
-# Inference Configuration
-CONFIDENCE_THRESHOLD = 0.5
 
 # RAF-DB Emotion Labels (0-indexed)
 EMOTION_LABELS = {

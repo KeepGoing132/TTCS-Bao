@@ -1,4 +1,3 @@
-
 import os
 import torch
 import numpy as np
@@ -98,12 +97,11 @@ class RecorderMeter:
         plt.close()
     
     def to(self):
-        """Convert to tensor if needed"""
+        
         return self
 
 
 def accuracy(output, target, topk=(1,)):
-    """Computes the accuracy over the k top predictions for the specified values of k"""
     with torch.no_grad():
         maxk = max(topk)
         batch_size = target.size(0)
@@ -142,7 +140,7 @@ def save_checkpoint(state, is_best, args, save_dir=None):
 
 
 def load_checkpoint(checkpoint_path, model, optimizer=None, device=None):
-    """Load checkpoint"""
+    
     if not os.path.isfile(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
     
@@ -160,7 +158,6 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, device=None):
 
 
 def adjust_learning_rate(optimizer, epoch, args):
-    """Adjust learning rate based on schedule"""
     if hasattr(args, 'lr_factor') and hasattr(args, 'lr_patience'):
         lr = args.lr * (args.lr_factor ** (epoch // args.lr_patience))
     else:
@@ -173,7 +170,7 @@ def adjust_learning_rate(optimizer, epoch, args):
 
 
 def create_logger(log_dir=None):
-    """Create logger for training"""
+    
     if log_dir is None:
         log_dir = config.LOG_DIR
     
@@ -187,7 +184,7 @@ def create_logger(log_dir=None):
 
 
 def log_message(log_path, message):
-    """Append message to log file"""
+    
     with open(log_path, 'a') as f:
         f.write(message + '\n')
     print(message)
