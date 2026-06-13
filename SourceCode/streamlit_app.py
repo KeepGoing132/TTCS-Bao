@@ -12,7 +12,7 @@ from PIL import Image
 from pathlib import Path
 import matplotlib.pyplot as plt
 import seaborn as sns
-from datetime import datetime
+from datetime import datetime                    
 import pandas as pd
 
 import config
@@ -126,13 +126,7 @@ def main():
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            st.markdown("""
-            ### 📖 Instructions:
-            1. Click **▶️ Start Training** to begin training ResNet50
-            2. Monitor real-time metrics
-            3. Best model saves automatically
-            4. Use trained model in Test & Evaluate tabs
-            """)
+           a = 1
         
         with col2:
             st.metric("Epochs", epochs)
