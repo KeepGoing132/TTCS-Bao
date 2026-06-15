@@ -1,6 +1,10 @@
 import os
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'  
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'  
+import json
+import os
+import cv2
+import av
 
 import streamlit as st
 import torch
@@ -12,13 +16,20 @@ from PIL import Image
 from pathlib import Path
 import matplotlib.pyplot as plt
 import seaborn as sns
-from datetime import datetime                    
+from datetime import datetime
 import pandas as pd
 
 import config
 from dataset import get_dataloaders, get_raf_db_transforms
 from models import get_model
 from utils import load_checkpoint, save_checkpoint, accuracy, AverageMeter
+from sklearn.metrics import (
+    confusion_matrix,
+    classification_report,
+    precision_score,
+    recall_score,
+    f1_score
+)
 
 st.set_page_config(
     page_title="😊 Facial Expression Recognition",
@@ -65,6 +76,7 @@ def get_dataloaders_cached(batch_size=64):
 
 def get_transform():
     return get_raf_db_transforms(train=False)
+
 
 def predict_emotion(image_array, model, transform):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -126,7 +138,7 @@ def main():
         col1, col2 = st.columns([2, 1])
         
         with col1:
-           a = 1
+            a = 1
         
         with col2:
             st.metric("Epochs", epochs)
@@ -374,7 +386,37 @@ def main():
         st.divider()
         
         if st.button("🔍 Evaluate on Test Set", key="eval_test", use_container_width=True, type="primary"):
-            if st.session_state.model_loaded:
+            if os.path.exists("log/test_results.json"):
+
+                with open("log/test_results.json", "r") as f:
+                    data = json.load(f)
+
+                y_true = data["labels"]
+                y_pred = data["predictions"]
+
+                correct = sum(
+                    1 for t, p in zip(y_true, y_pred)
+                    if t == p
+                )
+
+                total = len(y_true)
+
+                accuracy_pct = correct / total * 100
+
+                st.success("✅ Loaded saved test results")
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    st.metric("Accuracy", f"{accuracy_pct:.2f}%")
+
+                with col2:
+                    st.metric("Correct", f"{correct}/{total}")
+
+                with col3:
+                    st.metric("Error Rate", f"{100-accuracy_pct:.2f}%")
+
+            elif st.session_state.model_loaded:
                 try:
                     import gc
                     
@@ -442,6 +484,15 @@ def main():
                                 progress_bar.progress(progress)
                         
                         accuracy_pct = (correct / total) * 100
+                        os.makedirs("log", exist_ok=True)
+
+                        with open("log/test_results.json", "w") as f:
+                            json.dump({
+                                "labels": [int(x) for x in ground_truth],
+                                "predictions": [int(x) for x in predictions]
+                            }, f)
+
+                        st.success("✅ Test results saved to log/test_results.json")
                         
                         col1, col2, col3 = st.columns(3)
                         with col1:
@@ -584,12 +635,23 @@ def main():
         
         eval_mode = st.radio("Evaluation Mode", ["Confusion Matrix", "Classification Report", "Per-Class Metrics"], horizontal=True)
         
-        if st.button("📈 Generate Report", key="gen_report", use_container_width=True, type="primary"):
-            st.info("Generating evaluation report... (Simulation)")
+        if st.button("📈 Generate Report",
+             key="gen_report",
+             use_container_width=True,
+             type="primary"):
+
+            if not os.path.exists("log/test_results.json"):
+                st.warning("⚠️ Hãy chạy Test Set trước")
+                st.stop()
+
+            with open("log/test_results.json", "r") as f:
+                data = json.load(f)
+
+            y_true = data["labels"]
+            y_pred = data["predictions"]
             
             if eval_mode == "Confusion Matrix":
-                # Simulate confusion matrix
-                cm = np.random.randint(0, 20, (7, 7))
+                cm = confusion_matrix(y_true, y_pred)
                 
                 fig, ax = plt.subplots(figsize=(10, 8))
                 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
@@ -601,85 +663,209 @@ def main():
                 st.pyplot(fig)
             
             elif eval_mode == "Classification Report":
-                # Simulate classification report
-                report_data = {
-                    'Class': LABELS_CLEAN,
-                    'Precision': np.random.uniform(0.7, 0.95, 7),
-                    'Recall': np.random.uniform(0.7, 0.95, 7),
-                    'F1-Score': np.random.uniform(0.7, 0.95, 7),
-                    'Support': np.random.randint(30, 100, 7)
-                }
-                
-                df = pd.DataFrame(report_data)
+                report = classification_report(
+                    y_true,
+                    y_pred,
+                    target_names=LABELS_CLEAN,
+                    output_dict=True
+                )
+
+                df = pd.DataFrame(report).transpose()
+
                 st.dataframe(df, use_container_width=True)
+                
             
             else:
-                # Per-class metrics
-                metrics_data = {
-                    'Emotion': LABELS_CLEAN,
-                    'Accuracy': np.random.uniform(0.75, 0.95, 7),
-                    'Precision': np.random.uniform(0.7, 0.95, 7),
-                    'Recall': np.random.uniform(0.7, 0.95, 7)
-                }
-                
-                df = pd.DataFrame(metrics_data)
+                report = classification_report(
+                    y_true,
+                    y_pred,
+                    target_names=LABELS_CLEAN,
+                    output_dict=True
+                )
+
+                rows = []
+
+                for emotion in LABELS_CLEAN:
+                    rows.append({
+                        "Emotion": emotion,
+                        "Precision": report[emotion]["precision"],
+                        "Recall": report[emotion]["recall"],
+                        "F1-Score": report[emotion]["f1-score"]
+                    })
+
+                df = pd.DataFrame(rows)
+
                 st.dataframe(df, use_container_width=True)
+        
                 
-                fig, ax = plt.subplots(figsize=(10, 5))
-                df.set_index('Emotion')[['Accuracy', 'Precision', 'Recall']].plot(ax=ax)
-                ax.set_title('Per-Class Performance')
-                ax.set_ylabel('Score')
+                fig, ax = plt.subplots(figsize=(10,5))
+
+                df.set_index("Emotion")[
+                    ["Precision","Recall","F1-Score"]
+                ].plot(ax=ax)
+
+                ax.set_ylim(0,1)
+
                 st.pyplot(fig)
     
     with tab4:
-        st.header("📸 Sample Predictions")
-        
-        uploaded_file = st.file_uploader("Upload an image", type=['jpg', 'jpeg', 'png'])
-        
-        if uploaded_file is not None:
-            image = Image.open(uploaded_file)
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.image(image, caption="Uploaded Image", use_container_width=True)
-            
-            with col2:
-                st.markdown("### 🎯 Prediction Result")
-                
-                if st.button("🔮 Predict Emotion", key="predict_btn", use_container_width=True, type="primary"):
-                    try:
-                        model = load_model_cached()
-                        transform = get_transform()
-                        
-                        with st.spinner("Predicting..."):
-                            pred_idx, pred_prob, all_probs = predict_emotion(image, model, transform)
-                        
-                        pred_label = LABELS[pred_idx]
-                        conf_percent = pred_prob * 100
-                        
-                        st.metric("Predicted Emotion", pred_label)
-                        st.metric("Confidence", f"{conf_percent:.1f}%")
-                        
-                        # Emotion breakdown - use actual model scores
-                        st.markdown("### 📊 Confidence Scores")
-                        scores = all_probs  # Use actual model probabilities
-                        
-                        fig, ax = plt.subplots(figsize=(10, 4))
-                        bars = ax.barh(LABELS_CLEAN, scores)
-                        bars[pred_idx].set_color('green')
-                        ax.set_xlabel('Confidence')
-                        ax.set_title('Emotion Distribution')
-                        st.pyplot(fig)
-                        
-                    except Exception as e:
-                        st.error(f"❌ Prediction error: {e}")
-    
-    st.divider()
-    st.markdown("""
-    ---
-    **Facial Expression Recognition** | ResNet50 + RAF-DB | 2026
-    """)
+        from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+        class EmotionProcessor(VideoProcessorBase):
+            def __init__(self):
 
+                self.device = torch.device(
+                    'cuda' if torch.cuda.is_available() else 'cpu'
+                )
+
+                self.model = load_model_cached()
+                self.model.to(self.device)
+                self.model.eval()
+
+                self.transform = get_transform()
+
+                self.face_detector = cv2.CascadeClassifier(
+                    cv2.data.haarcascades +
+                    "haarcascade_frontalface_default.xml"
+                )
+
+            def recv(self, frame):
+
+                img = frame.to_ndarray(format="bgr24")
+
+                gray = cv2.cvtColor(
+                    img,
+                    cv2.COLOR_BGR2GRAY
+                )
+
+                faces = self.face_detector.detectMultiScale(
+                    gray,
+                    scaleFactor=1.1,
+                    minNeighbors=5,
+                    minSize=(50, 50)
+                )
+
+                for (x, y, w, h) in faces:
+
+                    face = img[y:y+h, x:x+w]
+
+                    try:
+
+                        face_rgb = cv2.cvtColor(
+                            face,
+                            cv2.COLOR_BGR2RGB
+                        )
+
+                        face_pil = Image.fromarray(face_rgb)
+
+                        tensor = self.transform(
+                            face_pil
+                        ).unsqueeze(0).to(self.device)
+
+                        with torch.no_grad():
+
+                            output = self.model(tensor)
+
+                            probs = torch.softmax(
+                                output,
+                                dim=1
+                            )
+
+                            pred_idx = torch.argmax(
+                                probs,
+                                dim=1
+                            ).item()
+
+                            conf = probs[0][pred_idx].item()
+
+                        label = LABELS_CLEAN[pred_idx]
+
+                        cv2.rectangle(
+                            img,
+                            (x, y),
+                            (x+w, y+h),
+                            (0,255,0),
+                            2
+                        )
+
+                        cv2.putText(
+                            img,
+                            f"{label} {conf*100:.1f}%",
+                            (x, y-10),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            (0,255,0),
+                            2
+                        )
+
+                    except:
+                        pass
+
+                return av.VideoFrame.from_ndarray(
+                    img,
+                    format="bgr24"
+                )
+        st.header("📸 Sample Predictions")
+
+        col1, col2 = st.columns([1,1])
+
+        with col1:
+
+            st.subheader("📁 Upload Image")
+
+            uploaded_file = st.file_uploader(
+                "Upload image",
+                type=["jpg","jpeg","png"]
+            )
+
+            if uploaded_file:
+
+                image = Image.open(uploaded_file)
+
+                st.image(
+                    image,
+                    use_container_width=True
+                )
+
+                if st.button("🔮 Predict"):
+
+                    model = load_model_cached()
+                    transform = get_transform()
+
+                    pred_idx, pred_prob, all_probs = predict_emotion(
+                        image,
+                        model,
+                        transform
+                    )
+
+                    st.metric(
+                        "Emotion",
+                        LABELS[pred_idx]
+                    )
+
+                    st.metric(
+                        "Confidence",
+                        f"{pred_prob*100:.2f}%"
+                    )
+
+        with col2:
+
+            st.subheader(
+                "🎥 Realtime Emotion Detection"
+            )
+
+            webrtc_streamer(
+                key="emotion_cam",
+                video_processor_factory=EmotionProcessor,
+                media_stream_constraints={
+                    "video": True,
+                    "audio": False
+                }
+            )
+        
+        st.divider()
+        st.markdown("""
+        ---
+        **Facial Expression Recognition** | ResNet50 + RAF-DB | 2026
+        """)
 if __name__ == "__main__":
     main()
